@@ -1,62 +1,71 @@
 #!/usr/bin/env python3
 """
-Improved Launcher with better validation and error handling.
-Works even without customtkinter to show installation instructions.
+SONYA Launcher
+- Проверяет зависимости/файлы/.env
+- Запускает GUI через main_universal.run_gui() (единая точка входа)
+- Если GUI недоступен, запускает main_universal.run_bot()
 """
 
 import sys
-import os
 from pathlib import Path
-
-# Proverka zavisimostey PERED importom GUI
-def check_and_install_dependencies():
-    """Check dependencies and offer to install them."""
-    required = {
-        'customtkinter': 'customtkinter',
-        'telegram': 'python-telegram-bot',
-        'dotenv': 'python-dotenv',
-        'psutil': 'psutil'
-    }
-    
-    missing = []
-    for module, package in required.items():
-        try:
-            __import__(module.replace('-', '_'))
-        except ImportError:
-            missing.append(package)
-    
-    if missing:
-        # In exe mode, just warn and continue
-        print(f"WARNING: Missing packages: {', '.join(missing)}")
-        print("This is exe mode - dependencies should be included...")
-        # Don't return False, continue to GUI
-    
-    return True
-
-# Proveryaem zavisimosti pered importom
-if not check_and_install_dependencies():
-    sys.exit(1)
-
-# Proveryaem tkinter pered importom customtkinter
-try:
-    import tkinter
-    tkinter.Tk().withdraw()
-    tkinter.Tk().destroy()
-    GUI_AVAILABLE = True
-except:
-    print("GUI not available, running in console mode...")
-    GUI_AVAILABLE = False
-
-if not GUI_AVAILABLE:
-    # Zapuskaem v konsolnom rezhime bez GUI
-    import main_universal
-    main_universal.main()
-    sys.exit(0)
-
-# Teper mozhno importirovat customtkinter
+import importlib.util
 import threading
 import time
-from typing import List
+
+
+def is_frozen_exe() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def module_exists(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def check_dependencies() -> list[str]:
+    required = {
+        "customtkinter": "customtkinter",
+        "telegram": "python-telegram-bot",
+        "dotenv": "python-dotenv",
+        "psutil": "psutil",
+    }
+
+    missing = []
+    for module, package in required.items():
+        if not module_exists(module):
+            missing.append(package)
+    return missing
+
+
+def can_use_tkinter() -> bool:
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        root.destroy()
+        return True
+    except Exception:
+        return False
+
+
+missing = check_dependencies()
+if missing:
+    print(f"WARNING: Missing packages: {', '.join(missing)}")
+    if not is_frozen_exe():
+        print("Install them with:")
+        print(f"  pip install {' '.join(missing)}")
+    else:
+        print("Running in EXE mode: dependencies should be bundled inside the build.")
+
+
+GUI_AVAILABLE = can_use_tkinter()
+
+if not GUI_AVAILABLE:
+    print("GUI not available, running in console mode...")
+    import main_universal
+    main_universal.run_bot()
+    sys.exit(0)
+
+
 import customtkinter as ctk
 
 COLORS = {
@@ -75,8 +84,6 @@ COLORS = {
 
 
 class LauncherGUI:
-    """Beautiful launcher GUI with validation."""
-
     def __init__(self):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
@@ -97,12 +104,9 @@ class LauncherGUI:
         self.start_launch()
 
     def create_ui(self):
-        """Create the UI."""
-        main_frame = ctk.CTkFrame(
-            self.root, fg_color=COLORS["bg_card"], corner_radius=20)
+        main_frame = ctk.CTkFrame(self.root, fg_color=COLORS["bg_card"], corner_radius=20)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Header
         header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         header_frame.pack(fill="x", pady=(30, 20))
 
@@ -110,7 +114,7 @@ class LauncherGUI:
             header_frame,
             text="SONYA LAUNCHER",
             font=ctk.CTkFont(size=28, weight="bold"),
-            text_color=COLORS["accent_blue"]
+            text_color=COLORS["accent_blue"],
         )
         title_label.pack(pady=(0, 5))
 
@@ -118,11 +122,10 @@ class LauncherGUI:
             header_frame,
             text="Telegram Bot Manager",
             font=ctk.CTkFont(size=14),
-            text_color=COLORS["text_dim"]
+            text_color=COLORS["text_dim"],
         )
         subtitle_label.pack()
 
-        # Progress section
         progress_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         progress_frame.pack(fill="x", padx=40, pady=(20, 10))
 
@@ -130,7 +133,7 @@ class LauncherGUI:
             progress_frame,
             textvariable=self.status_var,
             font=ctk.CTkFont(size=14),
-            text_color=COLORS["text_main"]
+            text_color=COLORS["text_main"],
         )
         self.status_label.pack(pady=(0, 15))
 
@@ -141,7 +144,7 @@ class LauncherGUI:
             height=20,
             corner_radius=10,
             fg_color=COLORS["bg_dark"],
-            progress_color=COLORS["accent_blue"]
+            progress_color=COLORS["accent_blue"],
         )
         self.progress_bar.pack()
 
@@ -149,11 +152,10 @@ class LauncherGUI:
             progress_frame,
             textvariable=self.progress_text_var,
             font=ctk.CTkFont(size=12),
-            text_color=COLORS["accent_blue"]
+            text_color=COLORS["accent_blue"],
         )
         self.progress_text_label.pack(pady=(5, 0))
 
-        # Error section
         error_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         error_frame.pack(fill="x", padx=40, pady=(10, 20))
 
@@ -162,151 +164,144 @@ class LauncherGUI:
             textvariable=self.error_var,
             font=ctk.CTkFont(size=12),
             text_color=COLORS["danger"],
-            wraplength=400
+            wraplength=400,
         )
         self.error_label.pack()
 
-        # Footer
         footer_label = ctk.CTkLabel(
             main_frame,
             text="Created with love for Kris",
             font=ctk.CTkFont(size=10),
-            text_color=COLORS["text_dim"]
+            text_color=COLORS["text_dim"],
         )
         footer_label.pack(pady=(10, 20))
 
-    def update_progress(self, value: float, status: str):
-        """Update progress bar and status."""
+    # Thread-safe UI calls
+    def _ui(self, fn, *args):
         try:
-            if not self.launch_complete:
-                self.progress_var.set(value)
-                self.status_var.set(status)
-                self.progress_text_var.set(f"{int(value)}%")
-                self.root.update()
-        except:
+            self.root.after(0, lambda: fn(*args))
+        except Exception:
             pass
 
-    def animate_progress(self, start_value: float, end_value: float, status: str, duration: float = 1.0):
-        """Animate progress from start to end value."""
-        if start_value >= end_value:
-            self.update_progress(end_value, status)
+    def _set_progress(self, value: float, status: str):
+        if self.launch_complete:
             return
+        self.progress_var.set(value)
+        self.status_var.set(status)
+        self.progress_text_var.set(f"{int(value)}%")
 
-        steps = int(end_value - start_value)
-        step_duration = duration / steps if steps > 0 else duration
+    def update_progress(self, value: float, status: str):
+        self._ui(self._set_progress, value, status)
 
-        for i in range(steps + 1):
-            current_value = start_value + i
-            self.update_progress(current_value, status)
-            time.sleep(step_duration)
+    def _set_error(self, error: str):
+        if self.launch_complete:
+            return
+        self.error_var.set(f"ERROR: {error}")
 
     def show_error(self, error: str):
-        """Show error message."""
-        try:
-            if not self.launch_complete:
-                self.error_var.set(f"ERROR: {error}")
-                self.root.update()
-        except:
-            pass
+        self._ui(self._set_error, error)
 
     def check_env_file(self) -> bool:
-        """Check if .env file exists and has required variables."""
-        env_path = Path('.env')
-        
+        env_path = Path(".env")
+
         if not env_path.exists():
             self.show_error(".env файл не найден! Создай его из .env.example")
             return False
 
-        # Читаем и проверяем содержимое
         try:
-            with open(env_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Проверяем наличие и валидность переменных
+            content = env_path.read_text(encoding="utf-8", errors="ignore")
+
+            def get_value(key: str) -> str:
+                for line in content.splitlines():
+                    if line.strip().startswith(key + "="):
+                        return line.split("=", 1)[1].strip()
+                return ""
+
+            token = get_value("TELEGRAM_BOT_TOKEN")
+            admin_id = get_value("ADMIN_ID")
+
             errors = []
-            
-            if 'TELEGRAM_BOT_TOKEN=' not in content:
-                errors.append("TELEGRAM_BOT_TOKEN отсутствует")
-            elif 'TELEGRAM_BOT_TOKEN=your_bot_token_here' in content or \
-                 'TELEGRAM_BOT_TOKEN=' in content and not any(c.isdigit() for c in content.split('TELEGRAM_BOT_TOKEN=')[1].split('\n')[0]):
+            if not token or token == "your_bot_token_here":
                 errors.append("TELEGRAM_BOT_TOKEN не настроен")
-            
-            if 'ADMIN_ID=' not in content:
-                errors.append("ADMIN_ID отсутствует")
-            elif 'ADMIN_ID=your_telegram_id_here' in content or \
-                 'ADMIN_ID=' in content and not content.split('ADMIN_ID=')[1].split('\n')[0].strip().isdigit():
+
+            if not admin_id or admin_id == "your_telegram_id_here" or not admin_id.isdigit():
                 errors.append("ADMIN_ID не настроен (должен быть числом)")
-            
+
             if errors:
                 self.show_error("Ошибки в .env:\n" + "\n".join(errors))
                 return False
-            
+
             return True
-            
         except Exception as e:
             self.show_error(f"Ошибка чтения .env: {e}")
             return False
 
+    def animate_progress(self, start_value: float, end_value: float, status: str, duration: float = 1.0):
+        if start_value >= end_value:
+            self.update_progress(end_value, status)
+            return
+
+        steps = max(1, int(end_value - start_value))
+        step_duration = duration / steps if steps > 0 else duration
+
+        for i in range(steps + 1):
+            self.update_progress(start_value + i, status)
+            time.sleep(step_duration)
+
     def launch_main_app(self):
-        """Launch the main GUI application."""
+        """Launch GUI via main_universal (single source of truth)."""
         try:
-            from gui import AppManagerGUI
-            app = AppManagerGUI()
+            import main_universal
+            self.launch_complete = True
             self.root.destroy()
-            app.run()
+            main_universal.run_gui()
         except Exception as e:
-            self.show_error(f"Ошибка запуска: {e}")
+            self.show_error(f"Ошибка запуска GUI: {e}")
 
     def launch_process(self):
-        """Main launch process."""
         try:
             current_progress = 0
 
-            # Step 1: Check files
             self.animate_progress(current_progress, 10, "Проверка файлов проекта...", 0.5)
             current_progress = 10
-            time.sleep(0.3)
-            
-            required_files = ['gui.py', 'bot.py', 'app_manager.py', 'config.py', 'responses.py']
+            time.sleep(0.2)
+
+            required_files = ["gui.py", "bot.py", "app_manager.py", "config.py", "responses.py", "main_universal.py"]
             missing_files = [f for f in required_files if not Path(f).exists()]
-            
             if missing_files:
                 self.show_error(f"Отсутствуют файлы: {', '.join(missing_files)}")
                 return
 
-            # Step 2: Check .env
             self.animate_progress(current_progress, 50, "Проверка конфигурации...", 1.0)
             current_progress = 50
-            time.sleep(0.5)
-            
+            time.sleep(0.2)
+
             if not self.check_env_file():
                 return
-            
+
             self.animate_progress(current_progress, 70, "Конфигурация OK ✓", 0.5)
             current_progress = 70
 
-            # Step 3: Initialize config
             self.animate_progress(current_progress, 90, "Инициализация конфигурации...", 0.5)
             current_progress = 90
-            time.sleep(0.3)
-            
+            time.sleep(0.2)
+
             try:
                 from config import get_config
-                config = get_config()
-                self.animate_progress(current_progress, 100, "Готово! Запуск...", 0.3)
+                _ = get_config()
             except Exception as e:
                 self.show_error(f"Ошибка инициализации: {e}")
                 return
 
-            # Step 4: Launch
-            time.sleep(0.5)
-            self.root.after(100, self.launch_main_app)
+            self.animate_progress(current_progress, 100, "Готово! Запуск...", 0.3)
+            time.sleep(0.4)
+
+            self._ui(self.launch_main_app)
 
         except Exception as e:
             self.show_error(f"Неожиданная ошибка: {e}")
 
     def start_launch(self):
-        """Start the launch process in background thread."""
         thread = threading.Thread(target=self.launch_process, daemon=True)
         thread.start()
 
@@ -315,7 +310,6 @@ class LauncherGUI:
 
 
 def main():
-    """Main launcher function."""
     try:
         app = LauncherGUI()
         app.run()
